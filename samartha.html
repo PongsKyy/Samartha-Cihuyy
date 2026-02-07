@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Samartha</title>
+    <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" rel="stylesheet">
+    
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #050a0f; 
+            font-family: 'Segoe UI', 'Roboto', sans-serif; 
+            touch-action: none;
+        }
+        
+        #video-container { 
+            position: absolute; 
+            bottom: 20px; 
+            right: 20px; 
+            width: 160px; height: 120px; 
+            transform: scaleX(-1); 
+            border-radius: 15px; 
+            overflow: hidden; 
+            border: 2px solid rgba(135, 206, 235, 0.4);
+            box-shadow: 0 0 15px rgba(135, 206, 235, 0.2);
+            z-index: 5; background: #000;
+        }
+        video { width: 100%; height: 100%; object-fit: cover; }
+
+        /* Loading Screen Style */
+        #loading {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #050a0f;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            z-index: 100;
+            transition: opacity 2s ease-out;
+        }
+
+        #loading-text {
+            color: #87CEEB;
+            font-family: 'Great Vibes', cursive; 
+            font-size: 3.5rem; 
+            text-shadow: 0 0 10px rgba(135, 206, 235, 0.6);
+            animation: pulse 2s infinite ease-in-out;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.6; transform: scale(0.95); }
+            50% { opacity: 1; transform: scale(1.05); }
+            100% { opacity: 0.6; transform: scale(0.95); }
+        }
+
+        @media (max-width: 600px) {
+            #video-container {
+                width: 100px; height: 75px; 
+                bottom: 15px; right: 15px;
+                border-width: 1px;
+            }
+            #loading-text {
+                font-size: 2.5rem; 
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">
+        <div id="loading-text">Hallo Samartha...</div>
+    </div>
+    
+    <div id="video-container"><video id="webcam" autoplay playsinline muted></video></div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+
+        const isMobile = window.innerWidth < 768;
+
+        const config = {
+            particleCount: isMobile ? 22000 : 45000, 
+            baseColor: new THREE.Color(0x87CEEB),   // Sky Blue
+            activeColor: new THREE.Color(0x00BFFF), // Deep Sky Blue
+            particleSize: isMobile ? 0.085 : 0.038, 
+            textScale: isMobile ? 0.014 : 0.022, 
+            heartScale: isMobile ? 0.12 : 0.18,
+            handTrackingSpeed: 0.1,
+            floatSpeed: 1.5,
+            floatAmp: 0.15
+        };
+
+        let scene, camera, renderer, particles, geometry, material;
+        let handLandmarker, video;
+        let lastVideoTime = -1;
+        
+        // Menambahkan variable posPlenger
+        let posHeart, posWe, posLove, posSamartha, posJos, posWell, posPlenger, posAbstract; 
+        let currentMode = 'abstract';
+
+        let handPosition = new THREE.Vector3(0, 0, 0);
+        let currentGroupPosition = new THREE.Vector3(0, 0, 0);
+
+        async function init() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050a0f, 0.025); 
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = isMobile ? 16 : 8;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.body.appendChild(renderer.domElement);
+
+            const controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 0.5;
+            controls.enableZoom = !isMobile; 
+            controls.minDistance = 2;
+            controls.maxDistance = 30;
+
+            createStarfield();
+
+            posHeart = generateHeartShape(config.particleCount);
+            posWe = generateTextShape("WE", 160); 
+            posLove = generateTextShape("LOVE", 160); 
+            posSamartha = generateTextShape("SAMARTHA", isMobile ? 80 : 100);
+            posJos = generateTextShape("SAMARTHA\nJOSSS JISSS", isMobile ? 70 : 90);
+            
+            // Generate WELL
+            posWell = generateWellShape(config.particleCount);
+            
+            // Generate plEngErrr (Jari Tengah)
+            posPlenger = generateTextShape("plEngErrr", isMobile ? 70 : 90);
+
+            posAbstract = generateAbstractShape(config.particleCount);
+
+            geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(posAbstract), 3));
+
+            const sprite = new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/disc.png');
+
+            material = new THREE.PointsMaterial({
+                color: config.baseColor,
+                size: config.particleSize,
+                map: sprite,
+                transparent: true,
+                opacity: 0.9, 
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+
+            try {
+                await setupMediaPipe();
+                const loadScreen = document.getElementById('loading');
+                loadScreen.style.opacity = 0;
+                setTimeout(() => {
+                    loadScreen.style.display = 'none';
+                }, 2000); 
+
+                animate();
+            } catch (error) {
+                console.error(error);
+                alert("Gagal memuat kamera.");
+            }
+        }
+
+        function generateAbstractShape(count) {
+            const arr = new Float32Array(count * 3);
+            const spread = isMobile ? 18 : 25; 
+            for (let i = 0; i < count; i++) {
+                arr[i * 3] = (Math.random() - 0.5) * spread;
+                arr[i * 3 + 1] = (Math.random() - 0.5) * spread; 
+                arr[i * 3 + 2] = (Math.random() - 0.5) * 12;
+            }
+            return arr;
+        }
+
+        function generateWellShape(count) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d', {willReadFrequently: true});
+            canvas.width = 1500; 
+            canvas.height = 1500; 
+            
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            ctx.font = `900 150px "Arial Black", sans-serif`;
+            ctx.fillText("WELL", canvas.width/2, canvas.height/2 - 120);
+
+            const cx = canvas.width/2 - 130; 
+            const cy = canvas.height/2 + 80; 
+            const r = 110; 
+
+            ctx.beginPath();
+            ctx.lineWidth = 18; 
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.lineWidth = 20; 
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(cx - 60, cy - 50); 
+            ctx.lineTo(cx - 25, cy - 25); 
+            ctx.lineTo(cx - 60, cy);      
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(cx + 60, cy - 50);
+            ctx.lineTo(cx + 25, cy - 25);
+            ctx.lineTo(cx + 60, cy);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.lineWidth = 14;
+            ctx.arc(cx, cy + 15, 60, 0.1 * Math.PI, 0.9 * Math.PI);
+            ctx.stroke();
+
+            ctx.save();
+            ctx.font = `200px serif`; 
+            ctx.translate(cx + 280, cy); 
+            ctx.scale(-1, 1); 
+            ctx.fillText("🤙", 0, 0);
+            ctx.restore();
+
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            const validPoints = [];
+            const step = isMobile ? 5 : 4; 
+
+            for(let y=0; y<canvas.height; y+=step) { 
+                for(let x=0; x<canvas.width; x+=step) {
+                    if(imageData[(y*canvas.width + x)*4 + 3] > 128) {
+                        validPoints.push({
+                            x: (x - canvas.width/2) * config.textScale,
+                            y: -(y - canvas.height/2) * config.textScale
+                        });
+                    }
+                }
+            }
+
+            const arr = new Float32Array(count * 3);
+            for(let i=0; i<count; i++) {
+                const p = validPoints[i % validPoints.length];
+                const spread = 0.03; 
+                arr[i*3] = p.x + (Math.random() - 0.5) * spread; 
+                arr[i*3+1] = p.y + (Math.random() - 0.5) * spread;
+                arr[i*3+2] = (Math.random() - 0.5) * 0.1; 
+            }
+            return arr;
+        }
+
+        function generateTextShape(text, fontSize) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d', {willReadFrequently: true});
+            canvas.width = 2500; 
+            canvas.height = 1200; 
+            
+            ctx.fillStyle = 'white';
+            ctx.font = `900 ${fontSize}px "Arial Black", sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            const lines = text.split('\n');
+            const lineHeight = fontSize * 1.2;
+            const startY = canvas.height/2 - ((lines.length - 1) * lineHeight) / 2;
+
+            lines.forEach((line, index) => {
+                ctx.fillText(line, canvas.width/2, startY + (index * lineHeight));
+            });
+
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            const validPoints = [];
+            const step = 2; 
+
+            for(let y=0; y<canvas.height; y+=step) { 
+                for(let x=0; x<canvas.width; x+=step) {
+                    if(imageData[(y*canvas.width + x)*4 + 3] > 128) {
+                        validPoints.push({
+                            x: (x - canvas.width/2) * config.textScale,
+                            y: -(y - canvas.height/2) * config.textScale
+                        });
+                    }
+                }
+            }
+
+            const arr = new Float32Array(config.particleCount * 3);
+            for(let i=0; i<config.particleCount; i++) {
+                const p = validPoints[i % validPoints.length];
+                const spread = 0.05; 
+                arr[i*3] = p.x + (Math.random() - 0.5) * spread; 
+                arr[i*3+1] = p.y + (Math.random() - 0.5) * spread;
+                arr[i*3+2] = (Math.random() - 0.5) * 0.15;
+            }
+            return arr;
+        }
+
+        function generateHeartShape(count) {
+            const arr = new Float32Array(count * 3);
+            let i = 0;
+            while (i < count) {
+                const x = (Math.random() - 0.5) * 45;
+                const y = (Math.random() - 0.5) * 45;
+                const z = (Math.random() - 0.5) * 20;
+                const nx = x / 18; const ny = y / 18;
+                
+                if (Math.pow(nx*nx + 9/4*ny*ny + z*z/100 - 1, 3) - nx*nx*z*z*z/200 - 9/80*ny*ny*z*z*z <= 0) {
+                     if (Math.pow(nx*nx + ny*ny - 1, 3) - nx*nx * ny*ny*ny <= 0) {
+                        arr[i*3] = x * config.heartScale;
+                        arr[i*3+1] = y * config.heartScale;
+                        arr[i*3+2] = z * config.heartScale;
+                        i++;
+                      }
+                }
+            }
+            return arr;
+        }
+
+        function createStarfield() {
+            const geo = new THREE.BufferGeometry();
+            const count = isMobile ? 2000 : 4000; 
+            const pos = new Float32Array(count * 3);
+            for(let i=0; i<count*3; i++) {
+                pos[i] = (Math.random()-0.5) * 200;
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const mat = new THREE.PointsMaterial({color: 0xffffff, size: 0.12, transparent: true, opacity: 0.6});
+            scene.add(new THREE.Points(geo, mat));
+        }
+
+        async function setupMediaPipe() {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+            handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numHands: 2 
+            });
+            
+            video = document.getElementById('webcam');
+            
+            let stream = null;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: "user",
+                        width: { ideal: isMobile ? 480 : 1280 },
+                        height: { ideal: isMobile ? 360 : 720 }
+                    } 
+                });
+            } catch (e) {
+                console.warn("Retrying camera without constraints...");
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            }
+
+            video.srcObject = stream;
+            return new Promise((resolve) => { video.onloadeddata = () => { video.play(); resolve(); }; });
+        }
+
+        function isFingerUp(landmarks, fingerIndex) {
+            const tip = landmarks[fingerIndex];
+            const pip = landmarks[fingerIndex - 2]; 
+            return tip.y < pip.y;
+        }
+
+        function getHandGesture(h) {
+            const isIndexUp = isFingerUp(h, 8);
+            const isMiddleUp = isFingerUp(h, 12);
+            const isRingUp = isFingerUp(h, 16);
+            const isPinkyUp = isFingerUp(h, 20);
+            
+            const distThumbIndex = Math.sqrt(Math.pow(h[4].x - h[8].x, 2) + Math.pow(h[4].y - h[8].y, 2));
+            const isThumbOpen = distThumbIndex > 0.05; 
+
+            if (isIndexUp && isMiddleUp && isRingUp && isPinkyUp && isThumbOpen) return 'five';
+            if (isThumbOpen && isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp) return 'three_special';
+            if (isThumbOpen && isIndexUp && isPinkyUp && !isMiddleUp && !isRingUp) return 'ily_sign';
+            if (isThumbOpen && isPinkyUp && !isIndexUp && !isMiddleUp && !isRingUp) return 'shaka_sign';
+
+            // --- GESTURE BARU: JARI TENGAH (Middle Finger) -> plEngErrr ---
+            // Syarat: Jari Tengah Naik, Telunjuk & Manis & Kelingking Turun
+            if (isMiddleUp && !isIndexUp && !isRingUp && !isPinkyUp) return 'middle_finger';
+
+            if (distThumbIndex < 0.08 && !isMiddleUp) return 'pinch';
+            if (isIndexUp && !isMiddleUp && !isRingUp && !isPinkyUp) return 'index_only';
+            if (isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp) return 'heart_hand';
+
+            return 'unknown';
+        }
+
+        function detectGesture(results) {
+            if (!results.landmarks || results.landmarks.length === 0) return 'abstract';
+
+            if (results.landmarks.length === 2) {
+                const g1 = getHandGesture(results.landmarks[0]);
+                const g2 = getHandGesture(results.landmarks[1]);
+                if ((g1 === 'five' && g2 === 'three_special') || (g1 === 'three_special' && g2 === 'five')) {
+                    return 'samartha';
+                }
+            }
+
+            const h = results.landmarks[0];
+            const gesture = getHandGesture(h);
+
+            // Mapping Gesture ke Mode
+            if (gesture === 'middle_finger') return 'plenger'; // Mapping Jari Tengah
+            if (gesture === 'shaka_sign') return 'well'; 
+            if (gesture === 'ily_sign') return 'josss';
+            if (gesture === 'pinch') return 'love';
+            if (gesture === 'index_only') return 'we';
+            
+            const isIndexUp = h[8].y < h[6].y; 
+            const isMiddleUp = h[12].y < h[10].y;
+            const isRingDown = h[16].y > h[14].y;
+            const isPinkyDown = h[20].y > h[18].y;
+            
+            if (isIndexUp && isMiddleUp && isRingDown && isPinkyDown) return 'heart';
+
+            return 'abstract';
+        }
+
+        function updateHandPosition(results) {
+            if (!results.landmarks || results.landmarks.length === 0) {
+                handPosition.set(0, 0, 0);
+                return;
+            }
+
+            let targetXRaw = 0;
+            let targetYRaw = 0;
+
+            if (results.landmarks.length === 2) {
+                const h1 = results.landmarks[0][9]; 
+                const h2 = results.landmarks[1][9]; 
+                targetXRaw = (h1.x + h2.x) / 2;
+                targetYRaw = (h1.y + h2.y) / 2;
+            } 
+            else {
+                const h1 = results.landmarks[0][9];
+                targetXRaw = h1.x;
+                targetYRaw = h1.y;
+            }
+
+            const sensitivityX = isMobile ? -14 : -18;
+            const sensitivityY = isMobile ? -10 : -12;
+            
+            const targetX = (targetXRaw - 0.5) * sensitivityX; 
+            const targetY = (targetYRaw - 0.5) * sensitivityY;
+            
+            handPosition.set(targetX, targetY, 0);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const currentTime = performance.now();
+            const timeSeconds = currentTime * 0.001;
+
+            if (video && video.readyState >= 2 && currentTime - lastVideoTime > 50) {
+                lastVideoTime = currentTime;
+                const results = handLandmarker.detectForVideo(video, currentTime);
+                
+                const newMode = detectGesture(results);
+                
+                if(newMode !== currentMode) {
+                    currentMode = newMode;
+                    if(currentMode !== 'abstract') material.color.lerp(config.activeColor, 0.2);
+                    else material.color.lerp(config.baseColor, 0.2);
+                }
+                updateHandPosition(results);
+            }
+
+            if (currentMode !== 'abstract') {
+                currentGroupPosition.lerp(handPosition, config.handTrackingSpeed);
+            } else {
+                currentGroupPosition.lerp(new THREE.Vector3(0,0,0), 0.05);
+            }
+
+            const positions = geometry.attributes.position.array;
+            let targetArray;
+            
+            if (currentMode === 'plenger') targetArray = posPlenger; // Mode Baru
+            else if (currentMode === 'well') targetArray = posWell;
+            else if (currentMode === 'josss') targetArray = posJos;
+            else if (currentMode === 'samartha') targetArray = posSamartha;
+            else if (currentMode === 'we') targetArray = posWe;
+            else if (currentMode === 'love') targetArray = posLove;
+            else if (currentMode === 'heart') targetArray = posHeart;
+            else targetArray = posAbstract;
+
+            for (let i = 0; i < config.particleCount; i++) {
+                const ix = i * 3;
+                const iy = i * 3 + 1;
+                const iz = i * 3 + 2;
+
+                let tx = targetArray[ix] || 0;
+                let ty = targetArray[iy] || 0;
+                let tz = targetArray[iz] || 0;
+
+                tx += currentGroupPosition.x;
+                ty += currentGroupPosition.y;
+
+                const floatX = Math.sin(timeSeconds * config.floatSpeed + iy) * config.floatAmp;
+                const floatY = Math.cos(timeSeconds * config.floatSpeed * 0.8 + ix) * config.floatAmp;
+                const floatZ = Math.sin(timeSeconds * config.floatSpeed * 0.5 + iz) * config.floatAmp;
+
+                if (currentMode === 'abstract') {
+                    const calmFactor = isMobile ? 0.6 : 1.0;
+                    tx += Math.sin(timeSeconds * 0.5 + iy * 0.1) * 1.5 * calmFactor;
+                    ty += Math.cos(timeSeconds * 0.5 + ix * 0.1) * 1.5 * calmFactor;
+                } else {
+                    tx += floatX;
+                    ty += floatY;
+                    tz += floatZ;
+
+                    // Efek detak jantung untuk mode tertentu
+                    if (['heart', 'samartha', 'josss', 'well', 'plenger'].includes(currentMode)) {
+                        const beat = 1 + Math.sin(timeSeconds * 3) * 0.05;
+                        let localTx = tx - currentGroupPosition.x;
+                        let localTy = ty - currentGroupPosition.y;
+                        localTx *= beat; 
+                        localTy *= beat; 
+                        tx = localTx + currentGroupPosition.x;
+                        ty = localTy + currentGroupPosition.y;
+                    }
+                }
+
+                const speed = currentMode === 'abstract' ? 0.02 : 0.08;
+                
+                positions[ix] += (tx - positions[ix]) * speed;
+                positions[iy] += (ty - positions[iy]) * speed;
+                positions[iz] += (tz - positions[iz]) * speed;
+            }
+
+            geometry.attributes.position.needsUpdate = true;
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        init();
+    </script>
+</body>
+</html>
